@@ -17,37 +17,38 @@ pub fn main() !void {
     while (iter.next()) |line| {
         std.debug.print("{s}\n", .{line});
 
-        version_data.current_version = try parseVersionLine(line, iter, "<<<<<<< HEAD", allocator);
-        version_data.pulled_version = try parseVersionLine(line, iter, "=======", allocator);
+        if (std.mem.eql(u8, line, "<<<<<<< HEAD")) {
+            const nextLine = iter.next();
+
+            if (nextLine) |val| {
+                version_data.current_version = try getVersionNumber(val, allocator);
+            }
+        }
+
+        if (std.mem.eql(u8, line, "=======")) {
+            const nextLine = iter.next();
+
+            if (nextLine) |val| {
+                version_data.pulled_version = try getVersionNumber(val, allocator);
+            }
+        }
     }
 
     std.debug.print("Current Version:\n{s}\n", .{version_data.current_version});
     std.debug.print("New Version:\n{s}", .{version_data.pulled_version});
 }
 
-fn parseVersionLine(line: []const u8, iter: std.mem.SplitIterator(u8, std.mem.DelimiterType.sequence), str_text: []const u8, allocator: std.mem.Allocator) error{OutOfMemory}![]const u8 {
-    if (std.mem.eql(u8, line, str_text)) {
-        const nextLine = iter.next();
-
-        if (nextLine) |val| {
-            return try parseOutVersionNumber(val, allocator);
-        }
-    }
-}
-
-fn parseOutVersionNumber(line: []const u8, allocator: std.mem.Allocator) error{OutOfMemory}![]const u8 {
+fn getVersionNumber(line: []const u8, allocator: std.mem.Allocator) error{OutOfMemory}![]const u8 {
     var split = std.mem.splitBackwardsSequence(u8, line, ":");
     const captured_string = split.next();
-    var version_string: []u8 = try allocator.alloc(u8, 32);
-    var version_length: usize = 0;
+    //var version_string: []const u8 = try allocator.alloc(u8, 32);
 
     if (captured_string) |str| {
         for (str, 0..) |char, i| {
             _ = i;
 
-            if (std.ascii.isDigit('9') or char == '.') {
-                version_string[version_length] = char;
-                version_length += 1;
+            if (std.ascii.isDigit(char) || char == '.') {
+                //version_string[version_string.len] = char;
             }
         }
     }
