@@ -4,6 +4,11 @@ const json_data = @embedFile("testconflictversioninfo.json");
 const AllVersionData = struct {
     current_version: []const u8,
     pulled_version: []const u8,
+
+    pub fn deinit(self: AllVersionData, allocator: std.mem.Allocator) void {
+        allocator.free(self.current_version);
+        allocator.free(self.pulled_version);
+    }
 };
 
 pub fn main() !void {
@@ -11,28 +16,33 @@ pub fn main() !void {
     const allocator = gpa.allocator();
     var iter = std.mem.splitSequence(u8, json_data, "\n");
     var version_data = AllVersionData{ .current_version = undefined, .pulled_version = undefined };
-    defer allocator.free(version_data.current_version);
-    defer allocator.free(version_data.pulled_version);
+    defer _ = gpa.deinit();
+    defer version_data.deinit(allocator);
 
     while (iter.next()) |line| {
         std.debug.print("{s}\n", .{line});
 
-        version_data.current_version = try parseVersionLine(line, iter, "<<<<<<< HEAD", allocator);
-        version_data.pulled_version = try parseVersionLine(line, iter, "=======", allocator);
+        if (try parseVersionLine(line, &iter, "<<<<<<< HEAD", allocator)) |version| {
+            version_data.current_version = version;
+        }
+
+        if (try parseVersionLine(line, &iter, "=======", allocator)) |version| {
+            version_data.pulled_version = version;
+        }
     }
 
     std.debug.print("Current Version:\n{s}\n", .{version_data.current_version});
     std.debug.print("New Version:\n{s}", .{version_data.pulled_version});
 }
 
-fn parseVersionLine(line: []const u8, iter: std.mem.SplitIterator(u8, std.mem.DelimiterType.sequence), str_text: []const u8, allocator: std.mem.Allocator) error{OutOfMemory}![]const u8 {
+fn parseVersionLine(line: []const u8, iter: *std.mem.SplitIterator(u8, std.mem.DelimiterType.sequence), str_text: []const u8, allocator: std.mem.Allocator) !?[]const u8 {
     if (std.mem.eql(u8, line, str_text)) {
-        const nextLine = iter.next();
-
-        if (nextLine) |val| {
+        if (iter.*.next()) |val| {
             return try parseOutVersionNumber(val, allocator);
         }
     }
+
+    return null;
 }
 
 fn parseOutVersionNumber(line: []const u8, allocator: std.mem.Allocator) error{OutOfMemory}![]const u8 {
@@ -45,13 +55,14 @@ fn parseOutVersionNumber(line: []const u8, allocator: std.mem.Allocator) error{O
         for (str, 0..) |char, i| {
             _ = i;
 
-            if (std.ascii.isDigit('9') or char == '.') {
+            if (std.ascii.isDigit(char) or char == '.') {
                 version_string[version_length] = char;
                 version_length += 1;
             }
         }
     }
 
+    version_string[version_length] = 0;
     return version_string;
 }
 
