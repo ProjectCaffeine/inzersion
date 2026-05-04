@@ -2,12 +2,17 @@ const std = @import("std");
 const json_data = @embedFile("testconflictversioninfo.json");
 
 const AllVersionData = struct {
-    current_version: []const u8,
-    pulled_version: []const u8,
+    current_version: VersionDetails,
+    pulled_version: VersionDetails,
+};
 
-    pub fn deinit(self: AllVersionData, allocator: std.mem.Allocator) void {
-        allocator.free(self.current_version);
-        allocator.free(self.pulled_version);
+const VersionDetails = struct {
+    major: u16,
+    minor: u16,
+    patch: u16,
+
+    pub fn init(major: u16, minor: u16, patch: u16) VersionDetails {
+        return VersionDetails{ .major = major, .minor = minor, .patch = patch };
     }
 };
 
@@ -17,7 +22,7 @@ pub fn main() !void {
     var iter = std.mem.splitSequence(u8, json_data, "\n");
     var version_data = AllVersionData{ .current_version = undefined, .pulled_version = undefined };
     defer _ = gpa.deinit();
-    defer version_data.deinit(allocator);
+    //defer version_data.deinit(allocator);
 
     while (iter.next()) |line| {
         std.debug.print("{s}\n", .{line});
@@ -31,11 +36,11 @@ pub fn main() !void {
         }
     }
 
-    std.debug.print("Current Version:\n{s}\n", .{version_data.current_version});
-    std.debug.print("New Version:\n{s}", .{version_data.pulled_version});
+    std.debug.print("Current Version:\n{d}.{d}.{d}\n", .{ version_data.current_version.major, version_data.current_version.minor, version_data.current_version.patch });
+    std.debug.print("New Version:\n{d}.{d}.{d}\n", .{ version_data.pulled_version.major, version_data.pulled_version.minor, version_data.pulled_version.patch });
 }
 
-fn parseVersionLine(line: []const u8, iter: *std.mem.SplitIterator(u8, std.mem.DelimiterType.sequence), str_text: []const u8, allocator: std.mem.Allocator) !?[]const u8 {
+fn parseVersionLine(line: []const u8, iter: *std.mem.SplitIterator(u8, std.mem.DelimiterType.sequence), str_text: []const u8, allocator: std.mem.Allocator) !?VersionDetails {
     if (std.mem.eql(u8, line, str_text)) {
         if (iter.*.next()) |val| {
             return try parseOutVersionNumber(val, allocator);
@@ -45,25 +50,40 @@ fn parseVersionLine(line: []const u8, iter: *std.mem.SplitIterator(u8, std.mem.D
     return null;
 }
 
-fn parseOutVersionNumber(line: []const u8, allocator: std.mem.Allocator) error{OutOfMemory}![]const u8 {
+fn parseOutVersionNumber(line: []const u8, allocator: std.mem.Allocator) error{ InvalidCharacter, Overflow, OutOfMemory }!VersionDetails {
     var split = std.mem.splitBackwardsSequence(u8, line, ":");
     const captured_string = split.next();
-    var version_string: []u8 = try allocator.alloc(u8, 32);
+    var version_string: []u8 = try allocator.alloc(u8, 16);
+    var version_numbers: []u16 = try allocator.alloc(u16, 3);
+
+    defer allocator.free(version_string);
+    defer allocator.free(version_numbers);
+
     var version_length: usize = 0;
+    var versions_parsed: usize = 0;
 
     if (captured_string) |str| {
         for (str, 0..) |char, i| {
             _ = i;
 
-            if (std.ascii.isDigit(char) or char == '.') {
+            if (std.ascii.isDigit(char)) {
                 version_string[version_length] = char;
                 version_length += 1;
+            } else if (char == '.') {
+                std.debug.print("Parsing number:\n{s}\n", .{version_string[0..version_length]});
+                version_numbers[versions_parsed] = try std.fmt.parseUnsigned(u16, version_string[0..version_length], 10);
+                versions_parsed += 1;
+
+                @memset(version_string, 0);
+                version_length = 0;
             }
         }
+
+        std.debug.print("Parsing number:\n{s}\n", .{version_string[0..version_length]});
+        version_numbers[versions_parsed] = try std.fmt.parseUnsigned(u16, version_string[0..version_length], 10);
     }
 
-    version_string[version_length] = 0;
-    return version_string;
+    return VersionDetails.init(version_numbers[0], version_numbers[1], version_numbers[2]);
 }
 
 fn readFile(allocator: std.mem.Allocator) void {
