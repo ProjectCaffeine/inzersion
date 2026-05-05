@@ -57,11 +57,21 @@ pub fn main() !void {
     std.debug.print("Current Version:\n{d}.{d}.{d}\n", .{ version_data.current_version.major, version_data.current_version.minor, version_data.current_version.patch });
     std.debug.print("Pulled Version:\n{d}.{d}.{d}\n", .{ version_data.pulled_version.major, version_data.pulled_version.minor, version_data.pulled_version.patch });
 
-    const final_version = GetFinalVersion(version_data, VersionResolutionMethod.generate_next);
+    const final_version = getFinalVersion(version_data, VersionResolutionMethod.generate_next);
     std.debug.print("Final Version:\n{d}.{d}.{d}\n", .{ final_version.major, final_version.minor, final_version.patch });
+
+    try createNewFile(final_version);
 }
 
-fn GetFinalVersion(version_data: AllVersionData, resolution_method: VersionResolutionMethod) VersionDetails {
+fn createNewFile(new_version: VersionDetails) !void {
+    const cwd = std.fs.cwd();
+
+    _ = new_version;
+
+    try cwd.copyFile("src/testconflictversioninfo.json", cwd, "copy.json", .{});
+}
+
+fn getFinalVersion(version_data: AllVersionData, resolution_method: VersionResolutionMethod) VersionDetails {
     var latest_version: VersionDetails = undefined;
 
     if (version_data.current_version.major != version_data.pulled_version.major) {
