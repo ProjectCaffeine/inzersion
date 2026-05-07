@@ -60,15 +60,40 @@ pub fn main() !void {
     const final_version = getFinalVersion(version_data, VersionResolutionMethod.generate_next);
     std.debug.print("Final Version:\n{d}.{d}.{d}\n", .{ final_version.major, final_version.minor, final_version.patch });
 
-    try createNewFile(final_version);
+    try updateFile(final_version, allocator);
 }
 
-fn createNewFile(new_version: VersionDetails) !void {
+fn updateFile(new_version: VersionDetails, allocator: std.mem.Allocator) !void {
     const cwd = std.fs.cwd();
+    const file = try cwd.openFile("sandbox2.json", .{});
+    defer file.close();
+
+    const file_size = try file.getEndPos();
+    const buffer = try file.readToEndAlloc(allocator, file_size);
+    defer allocator.free(buffer);
+
+    const out_buffer = try allocator.alloc(u8, file_size + 1);
+    defer allocator.free(out_buffer);
+
+    const start_of_diff = std.mem.indexOf(u8, buffer, "<").?;
+    const end_of_diff = std.mem.indexOf(u8, buffer, ">").?;
+
+    const true_end_of_diff = std.mem.indexOf(u8, buffer[end_of_diff..file_size], "\n").?;
+
+    std.debug.print("Start of diff: {d}\nEnd: {d}\nTrue end: {d}\n", .{ start_of_diff, end_of_diff, true_end_of_diff });
+
+    const collapsed_output = try std.mem.concat(allocator, u8, &[_][]const u8{ buffer[0..start_of_diff], buffer[true_end_of_diff + end_of_diff + 1 .. file_size] });
+
+    defer allocator.free(collapsed_output);
+
+    //_ = std.mem.replace(u8, buffer, "<<<<<<< HEAD\n", "", out_buffer);
+    //_ = std.mem.replace(u8, out_buffer, ">>>>>>> feat1\n", "", out_buffer);
+
+    const write_file = try cwd.createFile("sandbox.json", .{ .truncate = true });
+    defer write_file.close();
+    try write_file.writeAll(collapsed_output);
 
     _ = new_version;
-
-    try cwd.copyFile("src/testconflictversioninfo.json", cwd, "copy.json", .{});
 }
 
 fn getFinalVersion(version_data: AllVersionData, resolution_method: VersionResolutionMethod) VersionDetails {
