@@ -80,20 +80,16 @@ fn updateFile(new_version: VersionDetails, allocator: std.mem.Allocator) !void {
 
     const true_end_of_diff = std.mem.indexOf(u8, buffer[end_of_diff..file_size], "\n").?;
 
-    std.debug.print("Start of diff: {d}\nEnd: {d}\nTrue end: {d}\n", .{ start_of_diff, end_of_diff, true_end_of_diff });
+    const new_version_str = try std.fmt.allocPrint(allocator, "\t\"version\": \"{d}.{d}.{d}\",\n", .{ new_version.major, new_version.minor, new_version.patch });
+    defer allocator.free(new_version_str);
 
-    const collapsed_output = try std.mem.concat(allocator, u8, &[_][]const u8{ buffer[0..start_of_diff], buffer[true_end_of_diff + end_of_diff + 1 .. file_size] });
-
+    const collapsed_output = try std.mem.concat(allocator, u8, &[_][]const u8{ buffer[0..start_of_diff], new_version_str, buffer[true_end_of_diff + end_of_diff + 1 .. file_size] });
     defer allocator.free(collapsed_output);
-
-    //_ = std.mem.replace(u8, buffer, "<<<<<<< HEAD\n", "", out_buffer);
-    //_ = std.mem.replace(u8, out_buffer, ">>>>>>> feat1\n", "", out_buffer);
 
     const write_file = try cwd.createFile("sandbox.json", .{ .truncate = true });
     defer write_file.close();
-    try write_file.writeAll(collapsed_output);
 
-    _ = new_version;
+    try write_file.writeAll(collapsed_output);
 }
 
 fn getFinalVersion(version_data: AllVersionData, resolution_method: VersionResolutionMethod) VersionDetails {
