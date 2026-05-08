@@ -8,7 +8,8 @@ pub const AllVersionData = struct {
 };
 
 pub const ArgData = struct {
-    file_path: []const u8,
+    file_path: ?[]const u8,
+    resolution_method: ?VersionResolutionMethod,
 };
 
 pub const VersionDetails = struct {
