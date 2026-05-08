@@ -1,15 +1,15 @@
 const std = @import("std");
-const json_data = @embedFile("testconflictversioninfo.json");
 const models = @import("models.zig");
 const parse = @import("parse.zig");
 
 pub fn main() !void {
+    const arg_data = try getArgs();
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
     const allocator = gpa.allocator();
     defer _ = gpa.deinit();
 
     const cwd = std.fs.cwd();
-    const file = try cwd.openFile("sandbox2.json", .{});
+    const file = try cwd.openFile(arg_data.file_path, .{});
     defer file.close();
 
     const file_size = try file.getEndPos();
@@ -17,13 +17,9 @@ pub fn main() !void {
     defer allocator.free(buffer);
 
     var iter = std.mem.splitSequence(u8, buffer, "\n");
-    var version_data = models.AllVersionData{ .current_version = undefined, .pulled_version = undefined };
-
-    printArgs();
+    var version_data = models.AllVersionData{ .current_version = null, .pulled_version = null };
 
     while (iter.next()) |line| {
-        //std.debug.print("{s}\n", .{line});
-
         if (try parse.parseVersionLine(line, &iter, "<<<<<<< HEAD", allocator)) |version| {
             version_data.current_version = version;
         }
@@ -33,20 +29,39 @@ pub fn main() !void {
         }
     }
 
+    if (version_data.current_version == null) {
+        std.debug.print("Critical error: The diff text \"<<<<<<< HEAD\" could not be found.\n", .{});
+        return error.DiffTextNotFound;
+    }
+
+    if (version_data.pulled_version == null) {
+        std.debug.print("Critical error: The diff text \"=======\" could not be found.\n", .{});
+        return error.DiffTextNotFound;
+    }
+
     try updateFile(parse.getFinalVersion(version_data, models.VersionResolutionMethod.generate_next), allocator, cwd, buffer, file_size);
 }
 
-fn printArgs() void {
+fn getArgs() !models.ArgData {
     var args = std.process.args();
+    var arg_data = models.ArgData{ .file_path = undefined };
 
     // The first argument is always the executable path
-    const exe_name = args.next() orelse "unknown";
-    std.debug.print("Executable name: {s}\n", .{exe_name});
+    _ = args.next();
+    const possible_file_path = args.next();
+
+    if (possible_file_path) |file_path| {
+        arg_data.file_path = file_path;
+    } else {
+        return error.FilePathNotProvided;
+    }
 
     // Loop through the remaining arguments
     while (args.next()) |arg| {
         std.debug.print("Argument: {s}\n", .{arg});
     }
+
+    return arg_data;
 }
 
 fn updateFile(new_version: models.VersionDetails, allocator: std.mem.Allocator, cwd: std.fs.Dir, buffer: []const u8, file_size: u64) !void {

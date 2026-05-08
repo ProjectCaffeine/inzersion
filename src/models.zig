@@ -3,8 +3,12 @@ pub const VersionNumberType = enum { major, minor, patch };
 pub const VersionResolutionMethod = enum { use_latest, generate_next };
 
 pub const AllVersionData = struct {
-    current_version: VersionDetails,
-    pulled_version: VersionDetails,
+    current_version: ?VersionDetails,
+    pulled_version: ?VersionDetails,
+};
+
+pub const ArgData = struct {
+    file_path: []const u8,
 };
 
 pub const VersionDetails = struct {

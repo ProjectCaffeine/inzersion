@@ -11,7 +11,7 @@ pub fn parseVersionLine(line: []const u8, iter: *std.mem.SplitIterator(u8, std.m
     return null;
 }
 
-pub fn parseOutVersionNumber(line: []const u8, allocator: std.mem.Allocator) error{ InvalidCharacter, Overflow, OutOfMemory }!models.VersionDetails {
+pub fn parseOutVersionNumber(line: []const u8, allocator: std.mem.Allocator) error{ InvalidCharacter, Overflow, OutOfMemory, FullVersionNotFound }!models.VersionDetails {
     var split = std.mem.splitBackwardsSequence(u8, line, ":");
     var version_string: []u8 = try allocator.alloc(u8, 16);
     var version_numbers: []u16 = try allocator.alloc(u16, 3);
@@ -41,18 +41,23 @@ pub fn parseOutVersionNumber(line: []const u8, allocator: std.mem.Allocator) err
         version_numbers[versions_parsed] = try std.fmt.parseUnsigned(u16, version_string[0..version_length], 10);
     }
 
+    if (versions_parsed != 2) {
+        std.debug.print("Critical error: Full version could not be parsed. Parsed segments: {d}\n", .{versions_parsed + 1});
+        return error.FullVersionNotFound;
+    }
+
     return models.VersionDetails.init(version_numbers[0], version_numbers[1], version_numbers[2]);
 }
 
 pub fn getFinalVersion(version_data: models.AllVersionData, resolution_method: models.VersionResolutionMethod) models.VersionDetails {
     var latest_version: models.VersionDetails = undefined;
 
-    if (version_data.current_version.major != version_data.pulled_version.major) {
-        latest_version = if (version_data.current_version.major > version_data.pulled_version.major) version_data.current_version else version_data.pulled_version;
-    } else if (version_data.current_version.minor != version_data.pulled_version.minor) {
-        latest_version = if (version_data.current_version.minor > version_data.pulled_version.minor) version_data.current_version else version_data.pulled_version;
-    } else if (version_data.current_version.patch != version_data.pulled_version.patch) {
-        latest_version = if (version_data.current_version.patch > version_data.pulled_version.patch) version_data.current_version else version_data.pulled_version;
+    if (version_data.current_version.?.major != version_data.pulled_version.?.major) {
+        latest_version = if (version_data.current_version.?.major > version_data.pulled_version.?.major) version_data.current_version.? else version_data.pulled_version.?;
+    } else if (version_data.current_version.?.minor != version_data.pulled_version.?.minor) {
+        latest_version = if (version_data.current_version.?.minor > version_data.pulled_version.?.minor) version_data.current_version.? else version_data.pulled_version.?;
+    } else if (version_data.current_version.?.patch != version_data.pulled_version.?.patch) {
+        latest_version = if (version_data.current_version.?.patch > version_data.pulled_version.?.patch) version_data.current_version.? else version_data.pulled_version.?;
     }
 
     //std.debug.print("Latest version is current:\n{any}\n", .{latest_version.equals(version_data.current_version)});
@@ -62,7 +67,7 @@ pub fn getFinalVersion(version_data: models.AllVersionData, resolution_method: m
         return latest_version;
     }
 
-    switch (if (latest_version.equals(version_data.current_version)) version_data.pulled_version.most_recent_update else version_data.current_version.most_recent_update) {
+    switch (if (latest_version.equals(version_data.current_version.?)) version_data.pulled_version.?.most_recent_update else version_data.current_version.?.most_recent_update) {
         models.VersionNumberType.major => {
             return models.VersionDetails.init(latest_version.major + 1, 0, 0);
         },
