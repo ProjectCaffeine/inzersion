@@ -2,23 +2,25 @@ const std = @import("std");
 const models = @import("models.zig");
 const parse = @import("parse.zig");
 
-pub fn main() !void {
-    const arg_data = try getArgs();
+pub fn main(init: std.process.Init) !void {
+    var gpa = std.heap.DebugAllocator(.{ .thread_safe = true }){};
+    const allocator = gpa.allocator();
+    const arg_data = try getArgs(init);
 
     if (arg_data.file_path == null) {
         return;
     }
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
-    const allocator = gpa.allocator();
     defer _ = gpa.deinit();
 
-    const cwd = std.fs.cwd();
-    const file = try cwd.openFile(arg_data.file_path.?, .{});
-    defer file.close();
+    const cwd = std.Io.Dir.cwd();
+    const io = init.io;
+    const file = try cwd.openFile(io, arg_data.file_path.?, .{});
+    defer file.close(io);
 
-    const file_size = try file.getEndPos();
-    const buffer = try file.readToEndAlloc(allocator, file_size);
+    const file_size = try file.length(io);
+    const buffer = try std.Io.Dir.readFileAlloc(cwd, io, arg_data.file_path.?, allocator, .unlimited);
+    //const buffer = try file.readToEndAlloc(allocator, file_size);
     defer allocator.free(buffer);
 
     var iter = std.mem.splitSequence(u8, buffer, "\n");
@@ -44,11 +46,11 @@ pub fn main() !void {
         return error.DiffTextNotFound;
     }
 
-    try updateFile(parse.getFinalVersion(version_data, arg_data.resolution_method orelse models.VersionResolutionMethod.generate_next), allocator, cwd, buffer, file_size);
+    try updateFile(parse.getFinalVersion(version_data, arg_data.resolution_method orelse models.VersionResolutionMethod.generate_next), allocator, io, cwd, buffer, file_size);
 }
 
-fn getArgs() !models.ArgData {
-    var args = std.process.args();
+fn getArgs(init: std.process.Init) !models.ArgData {
+    var args = init.minimal.args.iterate();
     var arg_data = models.ArgData{ .file_path = null, .resolution_method = null };
 
     // The first argument is always the executable path
@@ -83,7 +85,7 @@ fn printHelpText() void {
     std.debug.print("Please provide a file path to the version file.\n\nAvailable Arguments:\n-l:\tUse the greater of the 2 versions in the conflict.\n-n:\tFind the later version, and apply the version upgrade from the smaller version to create the new latest version.", .{});
 }
 
-fn updateFile(new_version: models.VersionDetails, allocator: std.mem.Allocator, cwd: std.fs.Dir, buffer: []const u8, file_size: u64) !void {
+fn updateFile(new_version: models.VersionDetails, allocator: std.mem.Allocator, io: std.Io, cwd: std.Io.Dir, buffer: []const u8, file_size: u64) !void {
     const start_of_diff = std.mem.indexOf(u8, buffer, "<").?;
     const end_of_diff = std.mem.indexOf(u8, buffer, ">").?;
     const true_end_of_diff = std.mem.indexOf(u8, buffer[end_of_diff..file_size], "\n").?;
@@ -94,8 +96,9 @@ fn updateFile(new_version: models.VersionDetails, allocator: std.mem.Allocator, 
     const collapsed_output = try std.mem.concat(allocator, u8, &[_][]const u8{ buffer[0..start_of_diff], new_version_str, buffer[true_end_of_diff + end_of_diff + 1 .. file_size] });
     defer allocator.free(collapsed_output);
 
-    const write_file = try cwd.createFile("sandbox.json", .{ .truncate = true });
-    defer write_file.close();
+    const write_file = try cwd.createFile(io, "sandbox.json", .{ .truncate = true });
+    defer write_file.close(io);
 
-    try write_file.writeAll(collapsed_output);
+    //try write_file.writeAll(collapsed_output);
+    try write_file.writeStreamingAll(io, collapsed_output);
 }
