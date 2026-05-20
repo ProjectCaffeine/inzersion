@@ -24,13 +24,23 @@ pub fn getVersionFiles(allocator: std.mem.Allocator) !void {
     defer allocator.free(result.stderr);
 }
 
-pub fn isRepo(allocator: std.mem.Allocator) !bool {
-    const args = &[_][]const u8{ "git", "rev-parse", "--is-inside-work-tree", ">", "/dev/null", "2>&1" };
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
+pub fn isRepo(allocator: std.mem.Allocator, io: std.Io) !bool {
+    const args = &[_][]const u8{ "git", "rev-parse", "--is-inside-work-tree" };
+    const result = try std.process.run(allocator, io, .{
         .argv = args,
     });
 
     defer allocator.free(result.stdout);
     defer allocator.free(result.stderr);
+
+    return result.term.exited == 0;
+}
+
+fn parseTerm(term: std.process.Child.Term) void {
+    switch (term) {
+        .exited => |code| std.debug.print("Process exited with code: {d}\n", .{code}),
+        .signal => |sig| std.debug.print("Process terminated by signal: {d}\n", .{sig}),
+        .stopped => |sig| std.debug.print("Process stopped by signal: {d}\n", .{sig}),
+        .unknown => |code| std.debug.print("Process terminated for unknown reason: {d}\n", .{code}),
+    }
 }

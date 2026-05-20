@@ -1,20 +1,25 @@
 const std = @import("std");
 const models = @import("models.zig");
 const parse = @import("parse.zig");
+const git = @import("git.zig");
 
 pub fn main(init: std.process.Init) !void {
     var gpa = std.heap.DebugAllocator(.{ .thread_safe = true }){};
     const allocator = gpa.allocator();
     const arg_data = try getArgs(init);
+    const io = init.io;
 
-    if (arg_data.file_path == null) {
+    const in_repo = try git.isRepo(allocator, io);
+
+    std.debug.print("Is in repo: {any}\n", .{in_repo});
+
+    if (arg_data.file_path == null or arg_data.help) {
         return;
     }
 
     defer _ = gpa.deinit();
 
     const cwd = std.Io.Dir.cwd();
-    const io = init.io;
     const file = try cwd.openFile(io, arg_data.file_path.?, .{});
     defer file.close(io);
 
@@ -51,7 +56,7 @@ pub fn main(init: std.process.Init) !void {
 
 fn getArgs(init: std.process.Init) !models.ArgData {
     var args = init.minimal.args.iterate();
-    var arg_data = models.ArgData{ .file_path = null, .resolution_method = null };
+    var arg_data = models.ArgData{ .file_path = null, .resolution_method = null, .help = false };
 
     // The first argument is always the executable path
     _ = args.next();
@@ -59,6 +64,7 @@ fn getArgs(init: std.process.Init) !models.ArgData {
 
     if (possible_file_path) |file_path| {
         if (std.mem.eql(u8, file_path, "-h")) {
+            arg_data.help = true;
             printHelpText();
         } else {
             arg_data.file_path = file_path;
@@ -82,7 +88,7 @@ fn getArgs(init: std.process.Init) !models.ArgData {
 }
 
 fn printHelpText() void {
-    std.debug.print("Please provide a file path to the version file.\n\nAvailable Arguments:\n-l:\tUse the greater of the 2 versions in the conflict.\n-n:\tFind the later version, and apply the version upgrade from the smaller version to create the new latest version.", .{});
+    std.debug.print("Please provide a file path to the version file.\n\nAvailable Arguments:\n-l:\tUse the greater of the 2 versions in the conflict.\n-n:\tFind the later version, and apply the version upgrade from the smaller version to create the new latest version.\n", .{});
 }
 
 fn updateFile(new_version: models.VersionDetails, allocator: std.mem.Allocator, io: std.Io, cwd: std.Io.Dir, buffer: []const u8, file_size: u64) !void {

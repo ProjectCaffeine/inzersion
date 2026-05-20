@@ -10,6 +10,7 @@ pub const AllVersionData = struct {
 pub const ArgData = struct {
     file_path: ?[]const u8,
     resolution_method: ?VersionResolutionMethod,
+    help: bool,
 };
 
 pub const VersionDetails = struct {
